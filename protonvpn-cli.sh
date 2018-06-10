@@ -616,7 +616,13 @@ function connect_to_fastest_vpn() {
   check_if_internet_is_working_normally
 
   echo "Fetching ProtonVPN Servers..."
-  config_id=$(get_fastest_vpn_connection_id)
+  NO_AVAILABLE_COUNTRY="NO_AVAILABLE_COUNTRY"
+  selected_country=$(echo "$1" | tr '[:lower:]' '[:upper:]')
+  config_id=$(get_fastest_vpn_connection_id "$selected_country")
+  if [[ "$?" == "2" ]]; then
+    echo "[!] Error: No available country matches $selected_country code"
+    exit 1
+  fi
   selected_protocol="udp"
   openvpn_connect "$config_id" "$selected_protocol"
 }
@@ -756,6 +762,7 @@ json_parsed_response = json.loads("""$response_output""")
 
 all_features = {"SECURE_CORE": 1, "TOR": 2, "P2P": 4, "XOR": 8, "IPV6": 16}
 excluded_features_on_fastest_connect = ["TOR"]
+selected_country = """$selected_country""" or None
 
 candidates_1 = []
 for _ in json_parsed_response["LogicalServers"]:
@@ -770,8 +777,14 @@ for _ in json_parsed_response["LogicalServers"]:
             is_excluded = True
     if is_excluded is True:
         continue
+    if selected_country and _["ExitCountry"] != selected_country:
+        continue
     if (_["Tier"] <= int("""$tier""")):
         candidates_1.append(_)
+
+if selected_country and 0 == len(candidates_1):
+    print("""$NO_AVAILABLE_COUNTRY""")
+    exit(1)
 
 candidates_2_size = float(len(candidates_1)) / 100.00 * 5.00
 candidates_2 = sorted(candidates_1, key=lambda l: l["Score"])[:int(math.ceil(candidates_2_size))]
@@ -781,6 +794,9 @@ print(vpn_connection_id)
 
 END`
 
+  if [[ "$output" == "$NO_AVAILABLE_COUNTRY" ]]; then
+    exit 2
+  fi
   echo "$output"
 }
 
@@ -862,7 +878,7 @@ function help_message() {
     echo "   -c, --connect                       Select and connect to a ProtonVPN server."
     echo "   -c [server-name] [protocol]         Connect to a ProtonVPN server by name."
     echo "   -r, --random-connect                Connect to a random ProtonVPN server."
-    echo "   -f, --fastest-connect               Connect to the fastest available ProtonVPN server."
+    echo "   -f, --fastest-connect [country]     Connect to the fastest available ProtonVPN server."
     echo "   -d, --disconnect                    Disconnect the current session."
     echo "   --ip                                Print the current public IP address."
     echo "   --status                            Print connection status."
@@ -884,7 +900,7 @@ case $user_input in
     ;;
   "-r"|"--r"|"-random"|"--random"|"-random-connect"|"--random-connect") connect_to_random_vpn
     ;;
-  "-f"|"--f"|"-fastest"|"--fastest"|"-fastest-connect"|"--fastest-connect") connect_to_fastest_vpn
+  "-f"|"--f"|"-fastest"|"--fastest"|"-fastest-connect"|"--fastest-connect") connect_to_fastest_vpn "$2"
     ;;
   "-c"|"-connect"|"--c"|"--connect")
     if [[ $# == 1 ]]; then
